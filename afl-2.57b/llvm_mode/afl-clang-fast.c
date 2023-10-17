@@ -345,11 +345,14 @@ int main(int argc, char** argv) {
 
 
 #ifndef __ANDROID__
+  // 找到运行时库
   find_obj(argv[0]);
 #endif
 
+  // 收集环境变量中的参数收集到cc_params中，在传递给cc
   edit_params(argc, argv);
 
+  // 库函数，找到文件cc_params[0]，并以第二个参数执行该文件
   execvp(cc_params[0], (char**)cc_params);
 
   FATAL("Oops, failed to execute '%s' - check your PATH", cc_params[0]);

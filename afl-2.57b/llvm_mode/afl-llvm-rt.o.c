@@ -68,11 +68,12 @@ __thread u32 __afl_prev_loc;
 static u8 is_persistent;
 
 
-/* SHM setup. */
-
+/* SHM setup. 
+    如果用户没有指定$SHM_ENV_VAR的共享内存地址，使用默认的__afl_area_ptr
+*/
 static void __afl_map_shm(void) {
 
-  u8 *id_str = getenv(SHM_ENV_VAR);
+  u8 *id_str = getenv(SHM_ENV_VAR); // 在afl-fuzz.c main 中被setup_shm调用被存到环境变量中
 
   /* If we're running under AFL, attach to the appropriate region, replacing the
      early-stage __afl_area_initial region that is needed to allow some really
@@ -99,6 +100,7 @@ static void __afl_map_shm(void) {
 
 
 /* Fork server logic. */
+// 这段是在子进程中执行的
 
 static void __afl_start_forkserver(void) {
 
@@ -110,7 +112,9 @@ static void __afl_start_forkserver(void) {
   /* Phone home and tell the parent that we're OK. If parent isn't there,
      assume we're not running in forkserver mode and just execute program. */
 
-  if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
+  // 这里可以和上面父进程等待子进程 4 字节的消息呼应起来，证明 forkserver 初始化成功。
+  
+  if (write(FORKSRV_FD + 1, tmp, 4) != 4) return; // 发送4Bytes的握手信息
 
   while (1) {
 
@@ -118,7 +122,7 @@ static void __afl_start_forkserver(void) {
     int status;
 
     /* Wait for parent by reading from the pipe. Abort if read fails. */
-
+    // 从FORKSRV_FD得到4bytes的信息后，说明 fuzzer 要进行新一轮的运行
     if (read(FORKSRV_FD, &was_killed, 4) != 4) _exit(1);
 
     /* If we stopped the child in persistent mode, but there was a race
@@ -133,8 +137,8 @@ static void __afl_start_forkserver(void) {
     if (!child_stopped) {
 
       /* Once woken up, create a clone of our process. */
-
-      child_pid = fork();
+      // 启动一个子进程
+      child_pid = fork();  
       if (child_pid < 0) _exit(1);
 
       /* In child process: close fds, resume execution. */
@@ -143,7 +147,7 @@ static void __afl_start_forkserver(void) {
 
         close(FORKSRV_FD);
         close(FORKSRV_FD + 1);
-        return;
+        return; // ?去哪了：回到正常原逻辑中
   
       }
 
@@ -158,9 +162,10 @@ static void __afl_start_forkserver(void) {
     }
 
     /* In parent process: write PID to pipe, then wait for child. */
-
+    // 父进程把子进程的pid回给Fuzzer
     if (write(FORKSRV_FD + 1, &child_pid, 4) != 4) _exit(1);
 
+    // 调用waitpid等待子进程完成（子进程运行结束，表明该轮的模糊测试完成）
     if (waitpid(child_pid, &status, is_persistent ? WUNTRACED : 0) < 0)
       _exit(1);
 
@@ -171,7 +176,7 @@ static void __afl_start_forkserver(void) {
     if (WIFSTOPPED(status)) child_stopped = 1;
 
     /* Relay wait status to pipe, then loop back. */
-
+    // 将子进程返回的状态码 status 返回给 fuzzer ，以判断程序的运行结果（崩溃、超时等）
     if (write(FORKSRV_FD + 1, &status, 4) != 4) _exit(1);
 
   }
@@ -234,7 +239,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
 }
 
 
-/* This one can be called from user code when deferred forkserver mode
+/* This one can be called from *user code* when deferred forkserver mode
     is enabled. */
 
 void __afl_manual_init(void) {

@@ -1,3 +1,13 @@
+ This repo is a fork of [AFLGo](https://github.com/aflgo/aflgo), used to store some comments in the source code, for personal study.
+
+The following files were commented:
+
+* [afl-fuzz.c](./afl-2.57b/afl-fuzz.c)
+* [llvm_mode/afl-clang-fast.c](./afl-2.57b/llvm_mode/afl-clang-fast.c)
+* [llvm_mode/afl-llvm-pass.so.cc](./afl-2.57b/llvm_mode/afl-llvm-pass.so.cc)
+* [llvm_mode/afl-llvm-rt.o.c](./afl-2.57b/llvm_mode/afl-llvm-rt.o.c)
+
+
 # AFLGo: Directed Greybox Fuzzing
 <a href="https://mboehme.github.io/paper/CCS17.pdf" target="_blank"><img src="https://github.com/mboehme/mboehme.github.io/blob/master/paper/CCS17.png" align="right" width="250"></a>
 AFLGo is an extension of <a href="https://lcamtuf.coredump.cx/afl/" target="_blank">American Fuzzy Lop (AFL)</a>.

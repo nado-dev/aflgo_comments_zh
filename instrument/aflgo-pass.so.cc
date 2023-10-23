@@ -579,9 +579,9 @@ bool AFLCoverage::runOnModule(Module &M) {
           ConstantInt *Distance =
               ConstantInt::get(LargestType, (unsigned) distance); // 将一个整数值（distance）转化为LLVM中的常数值。
 
-          /* Add distance to shm[MAPSIZE] 总的距离大小之和？*/
+          /* Add distance to shm[MAPSIZE] 总的距离大小之和？8个字节用来存储距离和*/
 
-          // IRB.CreateGEP创建了一个指向 MapPtr 指令的指针，该指令使用 MapDistLoc{MAP_SIZE} 作为索引
+          // IRB.CreateGEP创建了一个指向 MapPtr 指令的指针，该指令使用 MapDistLoc(MAP_SIZE) 作为索引
           // 通过 IRB.CreateBitCast 将上述指针转化为类型为 LargestType 的指针。
           Value *MapDistPtr = IRB.CreateBitCast(
               IRB.CreateGEP(MapPtr, MapDistLoc), LargestType->getPointerTo()); 
@@ -592,9 +592,9 @@ bool AFLCoverage::runOnModule(Module &M) {
           IRB.CreateStore(IncrDist, MapDistPtr)
               ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None)); // 这行代码创建了一个存储指令，将 IncrDist 中的值存储到 MapDistPtr 指向的内存位置中，并设置了相应的元数据。
  
-          /* Increase count at shm[MAPSIZE + (4 or 8)] 有距离的bb的数量*/
+          /* Increase count at shm[MAPSIZE + (4 or 8)] 有距离的bb的数量 8个字节用来存储执行的基本块数目*/
 
-          Value *MapCntPtr = IRB.CreateBitCast(
+          Value *MapCntPtr = IRB.CreateBitCast( 
               IRB.CreateGEP(MapPtr, MapCntLoc), LargestType->getPointerTo());
           LoadInst *MapCnt = IRB.CreateLoad(MapCntPtr);
           MapCnt->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));

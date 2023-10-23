@@ -280,7 +280,7 @@ struct queue_entry {
   u32 tc_ref;                         /* Trace bytes ref count            该testcase被引用的次数，用于对每个边寻找更优的testcase覆盖*/
 
 #if AFLGO_IMPL
-  double distance;                    /* Distance to targets              */
+  double distance;                    /* Distance to targets              AFLGO distance*/
 #endif // AFLGO_IMPL
 
   struct queue_entry *next,           /* Next element, if any             往后1个*/
@@ -314,7 +314,7 @@ static u32 a_extras_cnt;              /* Total number of tokens available */
 static double cur_distance = -1.0;     /* Distance of executed input             */
 static double max_distance = -1.0;     /* Maximal distance for any input         */
 static double min_distance = -1.0;     /* Minimal distance for any input         */
-static u32 t_x = 10;                   /* Time to exploitation (Default: 10 min) */
+static u32 t_x = 10;                   /* Time to exploitation (Default: 10 min) 探索阶段的时间*/
 
 #endif // AFLGO_IMPL
 
@@ -834,7 +834,7 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
   q->passed_det   = passed_det;
 
 #if AFLGO_IMPL
-
+  // AFLGO中增加距离的属性，并且更新max_distance和min_distance
   q->distance = cur_distance;
 
   if (cur_distance > 0) {
@@ -1022,7 +1022,7 @@ static inline u8 has_new_bits(u8* virgin_map) {
 
 #ifdef WORD_SIZE_64
         // 比较每一个字节，当这批cur[i]的8个字节有任何一个满足 
-        // cur[i]不为0（有命中记录），且vir[i]的值为0xff时(初始值，说明是第一次命中)，返回值为2
+        // cur[i]不为0（有命中记录），且vir[i]的值为0xff时(初始值）说明是第一次命中，返回值为2
         // 如不满足，说明该tuple增加了的命中计数，返回1
         if ((cur[0] && vir[0] == 0xff) || (cur[1] && vir[1] == 0xff) ||
             (cur[2] && vir[2] == 0xff) || (cur[3] && vir[3] == 0xff) ||
@@ -1094,7 +1094,7 @@ static u32 count_bits(u8* mem) {
 /* Count the number of bytes set in the bitmap. Called fairly sporadically,
    mostly to update the status screen or calibrate and examine confirmed
    new paths. 
-   计算bitmap中的总字节数
+   计算bitmap中的非零总字节数
    */
 static u32 count_bytes(u8* mem) {
 
@@ -4991,11 +4991,17 @@ static u32 calculate_score(struct queue_entry* q) {
      exec_us = 1000, perf_score=25
      exec_us = 10000, perf_score=10
      */
-
+  if (q->exec_us * 0.1 > avg_exec_us) perf_score = 10;
+  else if (q->exec_us * 0.25 > avg_exec_us) perf_score = 25;
+  else if (q->exec_us * 0.5 > avg_exec_us) perf_score = 50;
+  else if (q->exec_us * 0.75 > avg_exec_us) perf_score = 75;
+  else if (q->exec_us * 4 < avg_exec_us) perf_score = 300;
+  else if (q->exec_us * 3 < avg_exec_us) perf_score = 200;
+  else if (q->exec_us * 2 < avg_exec_us) perf_score = 150;
 
   /* Adjust score based on bitmap size. The working theory is that better
      coverage translates to better targets. Multiplier from 0.25x to 3x. 
-     bitmap越大，得分越高
+     bitmap越大（覆盖率），得分越高
      */
 
   if (q->bitmap_size * 0.3 > avg_bitmap_size) perf_score *= 3;
@@ -5044,15 +5050,15 @@ static u32 calculate_score(struct queue_entry* q) {
 
   u64 cur_ms = get_cur_time();
   u64 t = (cur_ms - start_time) / 1000;
-  double progress_to_tx = ((double) t) / ((double) t_x * 60.0);
+  double progress_to_tx = ((double) t) / ((double) t_x * 60.0); // 当前fuzzing时间与tx的比例。tx前为探索阶段，tx后为利用阶段
 
-  double T;
+  double T; // 温度
 
   //TODO Substitute functions of exp and log with faster bitwise operations on integers
   switch (cooling_schedule) {
-    case SAN_EXP:
+    case SAN_EXP: // 指数冷却阶段
 
-      T = 1.0 / pow(20.0, progress_to_tx);
+      T = 1.0 / pow(20.0, progress_to_tx); // 当前的温度，详细见论文3.3节
 
       break;
 
@@ -5084,7 +5090,7 @@ static u32 calculate_score(struct queue_entry* q) {
 
     double normalized_d = 0; // when "max_distance == min_distance", we set the normalized_d to 0 so that we can sufficiently explore those testcases whose distance >= 0.
     if (max_distance != min_distance)
-      normalized_d = (q->distance - min_distance) / (max_distance - min_distance);
+      normalized_d = (q->distance - min_distance) / (max_distance - min_distance); // 规格化距离，见论文3.2
 
     if (normalized_d >= 0) {
 

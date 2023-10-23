@@ -76,9 +76,10 @@
 #endif /* __APPLE__ || __FreeBSD__ || __OpenBSD__ */
 
 /* For systems that have sched_setaffinity; right now just Linux, but one
-   can hope... */
+   can hope... 
+   在Linux下表现出"亲和性"，CPU affinity 是一种调度属性， 它可以将一个进程“绑定” 到一个或一组CPU上。
+   */
 
-// 在Linux下表现出"亲和性"，CPU affinity 是一种调度属性， 它可以将一个进程“绑定” 到一个或一组CPU上。
 #ifdef __linux__
 #  define HAVE_AFFINITY 1
 #endif /* __linux__ */
@@ -96,27 +97,27 @@
    really makes no sense to haul them around as function parameters. */
 
 
-EXP_ST u8 *in_dir,                    /* Input directory with test cases  */
-          *out_file,                  /* File to fuzz, if any             */
-          *out_dir,                   /* Working & output directory       */
-          *sync_dir,                  /* Synchronization directory        */
-          *sync_id,                   /* Fuzzer ID                        */
-          *use_banner,                /* Display banner                   */
-          *in_bitmap,                 /* Input bitmap                     */
-          *doc_path,                  /* Path to documentation dir        */
-          *target_path,               /* Path to target binary            */
-          *orig_cmdline;              /* Original command line            */
+EXP_ST u8 *in_dir,                    /* Input directory with test cases  原始输入路径*/
+          *out_file,                  /* File to fuzz, if any             作为模糊测试输入的文件路径 输入给PUT*/
+          *out_dir,                   /* Working & output directory       工作和输出所在的目录路径*/
+          *sync_dir,                  /* Synchronization directory        用于主从fuzzer同步的目录路径*/
+          *sync_id,                   /* Fuzzer ID                        id*/
+          *use_banner,                /* Display banner                   是否使用banner*/
+          *in_bitmap,                 /* Input bitmap                     bitmap路径*/
+          *doc_path,                  /* Path to documentation dir        项目文档路径*/
+          *target_path,               /* Path to target binary            编译得出的目标二进制的位置*/ 
+          *orig_cmdline;              /* Original command line            用户输入的原始命令行*/ 
 
-EXP_ST u32 exec_tmout = EXEC_TIMEOUT; /* Configurable exec timeout (ms)   */
+EXP_ST u32 exec_tmout = EXEC_TIMEOUT; /* Configurable exec timeout (ms)   默认超时时间*/
 static u32 hang_tmout = EXEC_TIMEOUT; /* Timeout used for hang det (ms)   */
 
-EXP_ST u64 mem_limit  = MEM_LIMIT;    /* Memory cap for child (MB)        */
+EXP_ST u64 mem_limit  = MEM_LIMIT;    /* Memory cap for child (MB)        内存限制*/
 
-static u32 stats_update_freq = 1;     /* Stats update frequency (execs)   */
+static u32 stats_update_freq = 1;     /* Stats update frequency (execs)   状态更新的频率*/
 
 #if AFLGO_IMPL
 
-static u8 cooling_schedule = 0;       /* Cooling schedule for directed fuzzing */
+static u8 cooling_schedule = 0;       /* Cooling schedule for directed fuzzing AFLGO中模拟退火的冷却阶段所使用到策略*/
 
 enum {
   /* 00 */ SAN_EXP,                   /* Exponential schedule                  */
@@ -127,59 +128,59 @@ enum {
 
 #endif // AFLGO_IMPL
 
-EXP_ST u8  skip_deterministic,        /* Skip deterministic stages?       */
-           force_deterministic,       /* Force deterministic stages?      */
-           use_splicing,              /* Recombine input files?           */
-           dumb_mode,                 /* Run in non-instrumented mode?    */
-           score_changed,             /* Scoring for favorites changed?   */
+EXP_ST u8  skip_deterministic,        /* Skip deterministic stages?       是否跳过确定性变异阶段：bitflip arithmetic interest dictionary*/
+           force_deterministic,       /* Force deterministic stages?      强制进行确定性变异*/
+           use_splicing,              /* Recombine input files?           是否进行splicing变异阶段*/
+           dumb_mode,                 /* Run in non-instrumented mode?    使用dumb_mode: 不使用插桩的信息反馈的模糊测试*/
+           score_changed,             /* Scoring for favorites changed?   表明所有种子队列的排名已经发生了变化*/
            kill_signal,               /* Signal that killed the child     */
-           resuming_fuzz,             /* Resuming an older fuzzing job?   */
-           timeout_given,             /* Specific timeout given?          */
-           not_on_tty,                /* stdout is not a tty              */
+           resuming_fuzz,             /* Resuming an older fuzzing job?   恢复之前fuzzing进度*/
+           timeout_given,             /* Specific timeout given?          用户给定的超时时间*/
+           not_on_tty,                /* stdout is not a tty              标准输出并非定位到终端上*/
            term_too_small,            /* terminal dimensions too small    */
            uses_asan,                 /* Target uses ASAN?                */
-           no_forkserver,             /* Disable forkserver?              */
-           crash_mode,                /* Crash mode! Yeah!                */
+           no_forkserver,             /* Disable forkserver?              禁用forkserver模式*/
+           crash_mode,                /* Crash mode! Yeah!                crash_mode默认是FAULT_NONE*/
            in_place_resume,           /* Attempt in-place resume?         */
            auto_changed,              /* Auto-generated tokens changed?   */
            no_cpu_meter_red,          /* Feng shui on the status screen   */
-           no_arith,                  /* Skip most arithmetic ops         */
-           shuffle_queue,             /* Shuffle input queue?             */
+           no_arith,                  /* Skip most arithmetic ops         跳过算术变异阶段*/
+           shuffle_queue,             /* Shuffle input queue?             是否打乱种子队列*/
            bitmap_changed = 1,        /* Time to update bitmap?           */
-           qemu_mode,                 /* Running in QEMU mode?            */
+           qemu_mode,                 /* Running in QEMU mode?            是否启用了qumu虚拟机支持*/
            skip_requested,            /* Skip request, via SIGUSR1        */
            run_over10m,               /* Run time over 10 minutes?        */
            persistent_mode,           /* Running in persistent mode?      */
            deferred_mode,             /* Deferred forkserver mode?        */
-           fast_cal;                  /* Try to calibrate faster?         */
+           fast_cal;                  /* Try to calibrate faster?         是否要加速校正阶段*/
 
-static s32 out_fd,                    /* Persistent fd for out_file       */
-           dev_urandom_fd = -1,       /* Persistent fd for /dev/urandom   */
-           dev_null_fd = -1,          /* Persistent fd for /dev/null      */
-           fsrv_ctl_fd,               /* Fork server control pipe (write) */
-           fsrv_st_fd;                /* Fork server status pipe (read)   */
+static s32 out_fd,                    /* Persistent fd for out_file       变异后的样例文件的描述符*/
+           dev_urandom_fd = -1,       /* Persistent fd for /dev/urandom   /dev/urandom的文件描述符*/
+           dev_null_fd = -1,          /* Persistent fd for /dev/null      /dev/null的文件描述符，在重定向阶段使用*/
+           fsrv_ctl_fd,               /* Fork server control pipe (write) forkserver相关，控制管道 fuzzer -> forkserver*/
+           fsrv_st_fd;                /* Fork server status pipe (read)   forkserver相关，forkserver -> fuzzer*/
 
-static s32 forksrv_pid,               /* PID of the fork server           */
-           child_pid = -1,            /* PID of the fuzzed program        */
+static s32 forksrv_pid,               /* PID of the fork server           forkserver的pid*/
+           child_pid = -1,            /* PID of the fuzzed program        PUT的pid*/
            out_dir_fd = -1;           /* FD of the lock file              */
 
-EXP_ST u8* trace_bits;                /* SHM with instrumentation bitmap  */
+EXP_ST u8* trace_bits;                /* SHM with instrumentation bitmap  记录覆盖率的共享内存的地址*/
 
-EXP_ST u8  virgin_bits[MAP_SIZE],     /* Regions yet untouched by fuzzing */
-           virgin_tmout[MAP_SIZE],    /* Bits we haven't seen in tmouts   */
-           virgin_crash[MAP_SIZE];    /* Bits we haven't seen in crashes  */
+EXP_ST u8  virgin_bits[MAP_SIZE],     /* Regions yet untouched by fuzzing fuzzing未触及到的地方，用于比对是否有新增的路径，初始值是全 0xff ，运行过后是 trace_bits 位的取反*/
+           virgin_tmout[MAP_SIZE],    /* Bits we haven't seen in tmouts   用来比对是否是新出现的超时，初始值是全 0xff ，运行过后是 trace_bits 位的取反*/
+           virgin_crash[MAP_SIZE];    /* Bits we haven't seen in crashes  用来比对是否是新出现的崩溃，初始值是全 0xff ，运行过后是 trace_bits 位的取反*/
 
-static u8  var_bytes[MAP_SIZE];       /* Bytes that appear to be variable */
+static u8  var_bytes[MAP_SIZE];       /* Bytes that appear to be variable 用于校准testcase，如果它触发的某个trace与以相同输入产生的新trace有不一样得到tuple覆盖，把这些tuple标记在var_bytes中*/
 
-static s32 shm_id;                    /* ID of the SHM region             */
+static s32 shm_id;                    /* ID of the SHM region             shared memory的id*/
 
-static volatile u8 stop_soon,         /* Ctrl-C pressed?                  */
-                   clear_screen = 1,  /* Window resized?                  */
+static volatile u8 stop_soon,         /* Ctrl-C pressed?                  用户按下Ctrl-C*/
+                   clear_screen = 1,  /* Window resized?                  清屏*/
                    child_timed_out;   /* Traced process timed out?        */
 
-EXP_ST u32 queued_paths,              /* Total number of queued testcases */
-           queued_variable,           /* Testcases with variable behavior */
-           queued_at_start,           /* Total number of initial inputs   */
+EXP_ST u32 queued_paths,              /* Total number of queued testcases 队列中种子的个数*/
+           queued_variable,           /* Testcases with variable behavior 在校正阶段判定为变量的种子的数量*/
+           queued_at_start,           /* Total number of initial inputs   初始输入的种子的数量*/
            queued_discovered,         /* Items discovered during this run */
            queued_imported,           /* Items imported via -S            */
            queued_favored,            /* Paths deemed favorable           */
@@ -194,12 +195,12 @@ EXP_ST u32 queued_paths,              /* Total number of queued testcases */
            current_entry,             /* Current queue entry ID           */
            havoc_div = 1;             /* Cycle count divisor for havoc    */
 
-EXP_ST u64 total_crashes,             /* Total number of crashes          */
+EXP_ST u64 total_crashes,             /* Total number of crashes          崩溃总数*/
            unique_crashes,            /* Crashes with unique signatures   */
            total_tmouts,              /* Total number of timeouts         */
            unique_tmouts,             /* Timeouts with unique signatures  */
            unique_hangs,              /* Hangs with unique signatures     */
-           total_execs,               /* Total execve() calls             */
+           total_execs,               /* Total execve() calls             execve()被调用次数，execve()的调用与forkserver相关*/
            slowest_exec_ms,           /* Slowest testcase non hang in ms  */
            start_time,                /* Unix start time (ms)             */
            last_path_time,            /* Time for most recent path (ms)   */
@@ -208,7 +209,7 @@ EXP_ST u64 total_crashes,             /* Total number of crashes          */
            last_crash_execs,          /* Exec counter at last crash       */
            queue_cycle,               /* Queue round counter              */
            cycles_wo_finds,           /* Cycles without any new paths     */
-           trim_execs,                /* Execs done to trim input files   */
+           trim_execs,                /* Execs done to trim input files   裁剪种子*/
            bytes_trim_in,             /* Bytes coming into the trimmer    */
            bytes_trim_out,            /* Bytes coming outa the trimmer    */
            blocks_eff_total,          /* Blocks subject to effector maps  */
@@ -237,13 +238,13 @@ static u64 stage_finds[32],           /* Patterns found per fuzz stage    */
 
 static u32 rand_cnt;                  /* Random number counter            */
 
-static u64 total_cal_us,              /* Total calibration time (us)      */
-           total_cal_cycles;          /* Total calibration cycles         */
+static u64 total_cal_us,              /* Total calibration time (us)      校正总用时*/
+           total_cal_cycles;          /* Total calibration cycles         校正总循环次数*/
 
 static u64 total_bitmap_size,         /* Total bit count for all bitmaps  */
            total_bitmap_entries;      /* Number of bitmaps counted        */
 
-static s32 cpu_core_count;            /* CPU core count                   */
+static s32 cpu_core_count;            /* CPU core count                   CPU核心数*/
 
 #ifdef HAVE_AFFINITY
 
@@ -259,45 +260,46 @@ struct queue_entry {
   u8* fname;                          /* File name for the test case      */
   u32 len;                            /* Input length                     */
 
-  u8  cal_failed,                     /* Calibration failed?              */
-      trim_done,                      /* Trimmed?                         */ // 修剪完了（即去除部分测试用例）? 
-      was_fuzzed,                     /* Had any fuzzing done yet?        */
+  u8  cal_failed,                     /* Calibration failed?              一个校正失败的种子的执行次数，默认3*/
+      trim_done,                      /* Trimmed?                         修剪完了（即去除部分测试用例）? */ 
+      was_fuzzed,                     /* Had any fuzzing done yet?        经过完整的变异流程才是一次fuzz过程，与运行要区分*/
       passed_det,                     /* Deterministic stages passed?     */
-      has_new_cov,                    /* Triggers new coverage?           */ // 触发新的覆盖率? 
-      var_behavior,                   /* Variable behavior?               */
-      favored,                        /* Currently favored?               */
-      fs_redundant;                   /* Marked as redundant in the fs?   */
+      has_new_cov,                    /* Triggers new coverage?           触发新的覆盖率? */ 
+      var_behavior,                   /* Variable behavior?               该种子是否具有可变特性*/
+      favored,                        /* Currently favored?               标记为favored*/
+      fs_redundant;                   /* Marked as redundant in the fs?   冗余的种子的标记*/
 
-  u32 bitmap_size,                    /* Number of bits set in bitmap     */
-      exec_cksum;                     /* Checksum of the execution trace  */
+  u32 bitmap_size,                    /* Number of bits set in bitmap     bitmap的大小*/
+      exec_cksum;                     /* Checksum of the execution trace  bitmap的哈希运算的check sum，唯一代表该bitmap*/
 
-  u64 exec_us,                        /* Execution time (us)              */
+  u64 exec_us,                        /* Execution time (us)              执行时间*/
       handicap,                       /* Number of queue cycles behind    */
-      depth;                          /* Path depth                       */
+      depth;                          /* Path depth                       路径深度*/
 
-  u8* trace_mini;                     /* Trace bytes, if kept             */
-  u32 tc_ref;                         /* Trace bytes ref count            */
+  u8* trace_mini;                     /* Trace bytes, if kept             该种子对应的trace_bit拷贝*/
+  u32 tc_ref;                         /* Trace bytes ref count            该testcase被引用的次数，用于对每个边寻找更优的testcase覆盖*/
 
 #if AFLGO_IMPL
   double distance;                    /* Distance to targets              */
 #endif // AFLGO_IMPL
 
-  struct queue_entry *next,           /* Next element, if any             */
-                     *next_100;       /* 100 elements ahead               */
+  struct queue_entry *next,           /* Next element, if any             往后1个*/
+                     *next_100;       /* 100 elements ahead               往后100个*/
 
 };
 
 static struct queue_entry *queue,     /* Fuzzing queue (linked list)      */
-                          *queue_cur, /* Current offset within the queue  */
-                          *queue_top, /* Top of the list                  */
-                          *q_prev100; /* Previous 100 marker              */
+                          *queue_cur, /* Current offset within the queue  当前指向的链表节点*/
+                          *queue_top, /* Top of the list                  链表头结点*/
+                          *q_prev100; /* Previous 100 marker              标记当前链表往前第100个节点*/
 
 static struct queue_entry*
-  top_rated[MAP_SIZE];                /* Top entries for bitmap bytes     */
+top_rated[MAP_SIZE];                  /* Top entries for bitmap bytes     存储的是要覆盖i边所消耗性能最小的样本的链表节点，对于后续选择哪个种子进行新一轮的循环比较重要*/
 
+// 用户定义的字典
 struct extra_data {
-  u8* data;                           /* Dictionary token data            */
-  u32 len;                            /* Dictionary token length          */
+  u8* data;                           /* Dictionary token data            用户字典数据*/
+  u32 len;                            /* Dictionary token length          用户字典数据长度*/
   u32 hit_cnt;                        /* Use count in the corpus          */
 };
 
@@ -318,32 +320,32 @@ static u32 t_x = 10;                   /* Time to exploitation (Default: 10 min)
 
 static u8* (*post_handler)(u8* buf, u32* len);
 
-/* Interesting values, as per config.h */
+/* Interesting values, as per config.h 这些值可能会触发溢出等预期外的行为*/
 
-static s8  interesting_8[]  = { INTERESTING_8 };
-static s16 interesting_16[] = { INTERESTING_8, INTERESTING_16 };
-static s32 interesting_32[] = { INTERESTING_8, INTERESTING_16, INTERESTING_32 };
+static s8  interesting_8[]  = { INTERESTING_8 }; //8位
+static s16 interesting_16[] = { INTERESTING_8, INTERESTING_16 }; //16位
+static s32 interesting_32[] = { INTERESTING_8, INTERESTING_16, INTERESTING_32 }; //32位
 
 /* Fuzzing stages */
 // 种子变异策略
 enum {
-  /* 00 */ STAGE_FLIP1,
-  /* 01 */ STAGE_FLIP2,
-  /* 02 */ STAGE_FLIP4,
-  /* 03 */ STAGE_FLIP8,
-  /* 04 */ STAGE_FLIP16,
-  /* 05 */ STAGE_FLIP32,
-  /* 06 */ STAGE_ARITH8,
-  /* 07 */ STAGE_ARITH16,
-  /* 08 */ STAGE_ARITH32,
-  /* 09 */ STAGE_INTEREST8,
-  /* 10 */ STAGE_INTEREST16,
-  /* 11 */ STAGE_INTEREST32,
-  /* 12 */ STAGE_EXTRAS_UO,
-  /* 13 */ STAGE_EXTRAS_UI,
-  /* 14 */ STAGE_EXTRAS_AO,
-  /* 15 */ STAGE_HAVOC,
-  /* 16 */ STAGE_SPLICsE
+  /* 00 翻转1bit*/ STAGE_FLIP1,
+  /* 01 翻转2bit，步长1bit*/ STAGE_FLIP2,
+  /* 02 翻转4bit，步长1bit*/ STAGE_FLIP4,
+  /* 03 翻转8bit，步长8bit*/ STAGE_FLIP8,
+  /* 04 翻转16bit，步长8it*/ STAGE_FLIP16,
+  /* 05 翻转32bit，步长8it*/ STAGE_FLIP32,
+  /* 06 算术运算8位*/ STAGE_ARITH8,
+  /* 07 算术运算16位，步长8位*/ STAGE_ARITH16,
+  /* 08 算术运算32位，步长8位*/ STAGE_ARITH32,
+  /* 09 有趣值8位，步长8位*/ STAGE_INTEREST8,
+  /* 10 有趣值8位，步长8位*/ STAGE_INTEREST16,
+  /* 11 有趣值入8位，步长8位*/ STAGE_INTEREST32,
+  /* 12 用户字典替换*/ STAGE_EXTRAS_UO,
+  /* 13 用户字典插入*/ STAGE_EXTRAS_UI,
+  /* 14 自动提取字典替换*/ STAGE_EXTRAS_AO,
+  /* 15 大破坏*/ STAGE_HAVOC,
+  /* 16 拼接*/ STAGE_SPLICsE
 };
 
 /* Stage value types */
@@ -355,19 +357,17 @@ enum {
 };
 
 /* Execution status fault codes */
-
 enum {
   /* 00 */ FAULT_NONE,
-  /* 01 */ FAULT_TMOUT,
-  /* 02 */ FAULT_CRASH,
-  /* 03 */ FAULT_ERROR,
-  /* 04 */ FAULT_NOINST,
-  /* 05 */ FAULT_NOBITS
+  /* 01 超时*/ FAULT_TMOUT,
+  /* 02 崩溃*/ FAULT_CRASH,
+  /* 03 错误*/ FAULT_ERROR,
+  /* 04 未产生新的有趣值*/ FAULT_NOINST,
+  /* 05 未产生新的覆盖*/ FAULT_NOBITS
 };
 
 
-/* Get unix time in milliseconds */
-
+/* Get unix time in milliseconds 时间支持ms*/
 static u64 get_cur_time(void) {
 
   struct timeval tv;
@@ -380,8 +380,7 @@ static u64 get_cur_time(void) {
 }
 
 
-/* Get unix time in microseconds */
-
+/* Get unix time in microseconds 时间支持us*/
 static u64 get_cur_time_us(void) {
 
   struct timeval tv;
@@ -395,8 +394,9 @@ static u64 get_cur_time_us(void) {
 
 
 /* Generate a random number (from 0 to limit - 1). This may
-   have slight bias. */
-
+   have slight bias. 
+   随机数支持
+   */
 static inline u32 UR(u32 limit) {
 
   if (unlikely(!rand_cnt--)) {
@@ -416,7 +416,6 @@ static inline u32 UR(u32 limit) {
 
 
 /* Shuffle an array of pointers. Might be slightly biased. */
-
 static void shuffle_ptrs(void** ptrs, u32 cnt) {
 
   u32 i;
@@ -552,8 +551,9 @@ static void bind_to_free_cpu(void) {
 #ifndef IGNORE_FINDS
 
 /* Helper function to compare buffers; returns first and last differing offset. We
-   use this to find reasonable locations for splicing two files. */
-
+   use this to find reasonable locations for splicing two files. 
+   定位端内存出现不一致的起止位置 first起点，last终点
+   */
 static void locate_diffs(u8* ptr1, u8* ptr2, u32 len, s32* first, s32* last) {
 
   s32 f_loc = -1;
@@ -585,11 +585,10 @@ static void locate_diffs(u8* ptr1, u8* ptr2, u32 len, s32* first, s32* last) {
    returned should be five characters or less for all the integers we reasonably
    expect to see. 
    用于将一个64位整数（u64）转换为一个表示该整数的字符串
-   
+   例如
    value = 1234567890123;
    printf("DI(%llu) = %s\n", value, DI(value)); // 输出: DI(1234567890123) = 1.23T
    */
-
 static u8* DI(u64 val) {
 
   static u8 tmp[12][16];
@@ -645,8 +644,9 @@ static u8* DI(u64 val) {
 
 
 /* Describe float. Similar to the above, except with a single 
-   static buffer. */
-
+   static buffer. 
+   用于将一个浮点数转换为一个表示该整数的字符串
+   */
 static u8* DF(double val) {
 
   static u8 tmp[16];
@@ -666,8 +666,9 @@ static u8* DF(double val) {
 }
 
 
-/* Describe integer as memory size. */
-
+/* Describe integer as memory size. 
+  把一个表示内存大小的u64表示为特定形式
+*/
 static u8* DMS(u64 val) {
 
   static u8 tmp[12][16];
@@ -717,8 +718,9 @@ static u8* DMS(u64 val) {
 }
 
 
-/* Describe time delta. Returns one static buffer, 34 chars of less. */
-
+/* Describe time delta. Returns one static buffer, 34 chars of less. 
+把表示时间的u64表示为特定形式
+*/
 static u8* DTD(u64 cur_ms, u64 event_ms) {
 
   static u8 tmp[64];
@@ -743,7 +745,6 @@ static u8* DTD(u64 cur_ms, u64 event_ms) {
 /* Mark deterministic checks as done for a particular queue entry. We use the
    .state file to avoid repeating deterministic fuzzing when resuming aborted
    scans. */
-
 static void mark_as_det_done(struct queue_entry* q) {
 
   u8* fn = strrchr(q->fname, '/');
@@ -764,7 +765,6 @@ static void mark_as_det_done(struct queue_entry* q) {
 
 /* Mark as variable. Create symlinks if possible to make it easier to examine
    the files. */
-
 static void mark_as_variable(struct queue_entry* q) {
 
   u8 *fn = strrchr(q->fname, '/') + 1, *ldest;
@@ -790,9 +790,8 @@ static void mark_as_variable(struct queue_entry* q) {
 
 /* Mark / unmark as redundant (edge-only). This is not used for restoring state,
    but may be useful for post-processing datasets. 
-   标记非favored的seed
+   标记非favored的seed，即冗余的
    */
-
 static void mark_as_redundant(struct queue_entry* q, u8 state) {
 
   u8* fn;
@@ -822,8 +821,9 @@ static void mark_as_redundant(struct queue_entry* q, u8 state) {
 }
 
 
-/* Append new test case to the queue. */
-
+/* Append new test case to the queue. 
+  种子队列新增一个节点
+*/
 static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
 
   struct queue_entry* q = ck_alloc(sizeof(struct queue_entry));
@@ -876,8 +876,9 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
 }
 
 
-/* Destroy the entire queue. */
-
+/* Destroy the entire queue.
+   销毁种子队列
+*/
 EXP_ST void destroy_queue(void) {
 
   struct queue_entry *q = queue, *n;
@@ -897,8 +898,9 @@ EXP_ST void destroy_queue(void) {
 
 /* Write bitmap to file. The bitmap is useful mostly for the secret
    -B option, to focus a separate fuzzing session on a particular
-   interesting input without rediscovering all the others. */
-
+   interesting input without rediscovering all the others. 
+   把该种子得到bitmap写入文件中
+   */
 EXP_ST void write_bitmap(void) {
 
   u8* fname;
@@ -920,8 +922,9 @@ EXP_ST void write_bitmap(void) {
 }
 
 
-/* Read bitmap from file. This is for the -B option again. */
-
+/* Read bitmap from file. This is for the -B option again. 
+   从文件中读出对应种子的bitmap
+*/
 EXP_ST void read_bitmap(u8* fname) {
 
   s32 fd = open(fname, O_RDONLY);
@@ -942,11 +945,12 @@ EXP_ST void read_bitmap(u8* fname) {
 
    This function is called after every exec() on a fairly large buffer, so
    it needs to be fast. We do this in 32-bit and 64-bit flavors. 
+
+   检查case执行后有无产生新的覆盖/覆盖数的增加
    返回值为1：只有现存的tuple产生了hitcount的增加
    返回值为2：产生了新的tuple
    返回值为0：没有产生新的覆盖
    */
-
 static inline u8 has_new_bits(u8* virgin_map) {
 
 #ifdef WORD_SIZE_64
@@ -1053,8 +1057,9 @@ static inline u8 has_new_bits(u8* virgin_map) {
 
 
 /* Count the number of bits set in the provided bitmap. Used for the status
-   screen several times every second, does not have to be fast. */
-
+   screen several times every second, does not have to be fast. 
+   计算bitmap中的总位数
+   */
 static u32 count_bits(u8* mem) {
 
   u32* ptr = (u32*)mem;
@@ -1088,8 +1093,9 @@ static u32 count_bits(u8* mem) {
 
 /* Count the number of bytes set in the bitmap. Called fairly sporadically,
    mostly to update the status screen or calibrate and examine confirmed
-   new paths. */
-
+   new paths. 
+   计算bitmap中的总字节数
+   */
 static u32 count_bytes(u8* mem) {
 
   u32* ptr = (u32*)mem;
@@ -1115,7 +1121,6 @@ static u32 count_bytes(u8* mem) {
 
 /* Count the number of non-255 bytes set in the bitmap. Used strictly for the
    status screen, several calls per second or so. */
-
 static u32 count_non_255_bytes(u8* mem) {
 
   u32* ptr = (u32*)mem;
@@ -1146,7 +1151,6 @@ static u32 count_non_255_bytes(u8* mem) {
    and replacing it with 0x80 or 0x01 depending on whether the tuple
    is hit or not. Called on every new crash or timeout, should be
    reasonably fast. */
-
 static const u8 simplify_lookup[256] = { 
 
   [0]         = 1,
@@ -1216,8 +1220,9 @@ static void simplify_trace(u32* mem) {
 
 /* Destructively classify execution counts in a trace. This is used as a
    preprocessing step for any newly acquired traces. Called on every exec,
-   must be fast. */
-
+   must be fast. 
+   命中数量简化对应表 当运行的次数在一个范围的时候，都会被归类为同一运行次数
+   */
 static const u8 count_class_lookup8[256] = {
 
   [0]           = 0,
@@ -1324,8 +1329,9 @@ static inline void classify_counts(u32* mem) {
 #endif /* ^WORD_SIZE_64 */
 
 
-/* Get rid of shared memory (atexit handler). */
-
+/* Get rid of shared memory (atexit handler). 
+  共享内存操作：删除
+*/
 static void remove_shm(void) {
 
   shmctl(shm_id, IPC_RMID, NULL);
@@ -1336,7 +1342,6 @@ static void remove_shm(void) {
 /* Compact trace bytes into a smaller bitmap. We effectively just drop the
    count information here. This is called only sporadically, for some
    new paths. */
-
 static void minimize_bits(u8* dst, u8* src) {
 
   u32 i = 0;
@@ -1363,7 +1368,6 @@ static void minimize_bits(u8* dst, u8* src) {
    主要目的是更新top_rated，为之后的种子挑选做准备，
    青睐更快的执行速度和更短输入的testcase
    */
-
 static void update_bitmap_score(struct queue_entry* q) {
 
   u32 i;
@@ -1426,11 +1430,10 @@ static void update_bitmap_score(struct queue_entry* q) {
    
    使用的是贪心思想，不关心具体的favored集合的大小
    */
-
 static void cull_queue(void) {
 
   struct queue_entry* q;
-  static u8 temp_v[MAP_SIZE >> 3]; // 因为使用的是比特位，所以比之前的tracebits可以少3位
+  static u8 temp_v[MAP_SIZE >> 3]; //采用比特位来标记当前边的路径是否已经被当前遍历过的样例所覆盖  因为使用的是比特位，所以比之前的tracebits可以少3位
   u32 i;
 
   if (dumb_mode || !score_changed) return; // score_changed没有变化不需要重新排队
@@ -1482,8 +1485,9 @@ static void cull_queue(void) {
 }
 
 
-/* Configure shared memory and virgin_bits. This is called at startup. */
-
+/* Configure shared memory and virgin_bits. This is called at startup. 
+  共享内存操作：获取与attach，初始化时调用
+*/
 EXP_ST void setup_shm(void) {
 
   u8* shm_str;
@@ -1526,7 +1530,7 @@ EXP_ST void setup_shm(void) {
 
 /* Load postprocessor, if available. */
 // 从AFL_POST_LIBRARY中加载指定的动态链接库，
-// 加载函数afl_postprocess并将函数指针存储到post_handler当中
+// 加载函数afl_postprocess并将函数指针存储到post_handler当中，给用户提供一个hook接口
 static void setup_post(void) {
 
   void* dh;
@@ -1554,7 +1558,6 @@ static void setup_post(void) {
 
 /* Read all testcases from the input directory, then queue them for testing.
    Called at startup. */
-
 static void read_testcases(void) {
 
   struct dirent **nl;
@@ -1656,7 +1659,7 @@ static void read_testcases(void) {
 }
 
 
-/* Helper function for load_extras. */
+/* Helper function for load_extras. 用户字典相关*/
 
 static int compare_extras_len(const void* p1, const void* p2) {
   struct extra_data *e1 = (struct extra_data*)p1,
@@ -1673,8 +1676,7 @@ static int compare_extras_use_d(const void* p1, const void* p2) {
 }
 
 
-/* Read extras from a file, sort by size. */
-
+/* Read extras from a file, sort by size. 加载并排序用户字典文件*/
 static void load_extras_file(u8* fname, u32* min_len, u32* max_len,
                              u32 dict_level) {
 
@@ -1811,7 +1813,6 @@ static void load_extras_file(u8* fname, u32* min_len, u32* max_len,
 
 
 /* Read extras from the extras directory and sort them by size. */
-
 static void load_extras(u8* dir) {
 
   DIR* d;
@@ -1913,7 +1914,6 @@ check_and_sort:
 
 
 /* Helper function for maybe_add_auto() */
-
 static inline u8 memcmp_nocase(u8* m1, u8* m2, u32 len) {
 
   while (len--) if (tolower(*(m1++)) ^ tolower(*(m2++))) return 1;
@@ -1923,7 +1923,6 @@ static inline u8 memcmp_nocase(u8* m1, u8* m2, u32 len) {
 
 
 /* Maybe add automatic extra. */
-
 static void maybe_add_auto(u8* mem, u32 len) {
 
   u32 i;
@@ -2029,7 +2028,6 @@ sort_a_extras:
 
 
 /* Save automatically generated extras. */
-
 static void save_auto(void) {
 
   u32 i;
@@ -2057,7 +2055,6 @@ static void save_auto(void) {
 
 
 /* Load automatically generated extras. */
-
 static void load_auto(void) {
 
   u32 i;
@@ -2100,7 +2097,6 @@ static void load_auto(void) {
 
 
 /* Destroy extras. */
-
 static void destroy_extras(void) {
 
   u32 i;
@@ -2124,12 +2120,14 @@ static void destroy_extras(void) {
 
    In essence, the instrumentation allows us to skip execve(), and just keep
    cloning a stopped child. So, we just execute once, and then send commands
-   through a pipe. The other part of this logic is in afl-as.h. */
-
+   through a pipe. The other part of this logic is in afl-as.h. 
+   
+   forkserver启动相关，forkserver作为fuzzer和target沟通的渠道，承担控制和信息收集的任务*/
 EXP_ST void init_forkserver(char** argv) {
 
   static struct itimerval it;
-  int st_pipe[2], ctl_pipe[2];
+  int st_pipe[2]; // 状态传输管道
+  int ctl_pipe[2]; // 控制传输管道
   int status;
   s32 rlen;
 
@@ -2658,7 +2656,7 @@ static u8 run_target(char** argv, u32 timeout) {
 /* Write modified data to file for testing. If out_file is set, the old file
    is unlinked and a new one is created. Otherwise, out_fd is rewound and
    truncated. */
-// 保存变异后的样本数据到指定的路径
+// 保存变异后的testcase到指定的路径
 static void write_to_testcase(void* mem, u32 len) {
 
   s32 fd = out_fd;
@@ -2686,9 +2684,8 @@ static void write_to_testcase(void* mem, u32 len) {
 
 
 /* The same, but with an adjustable gap. Used for trimming. 
-删除了指定的字符段，然后将剩余的内容写入
+  删除了指定的字符段，然后将剩余的内容写入
 */
-
 static void write_with_gap(void* mem, u32 len, u32 skip_at, u32 skip_len) {
 
   s32 fd = out_fd;
@@ -2723,10 +2720,10 @@ static void show_stats(void);
 /* Calibrate a new test case. This is done when processing the input directory
    to warn about flaky or otherwise problematic test cases early on; and when
    new paths are discovered to detect variable behavior and so on. 
+   
    对testcase多执行几次，看是否有相同的输入导致不同的分支覆盖的问题，如有标记不同
    的tuple在var_bytes中
    */
-
 static u8 calibrate_case(char** argv, struct queue_entry* q, u8* use_mem,
                          u32 handicap, u8 from_queue) {
 
@@ -2924,8 +2921,9 @@ static void check_map_coverage(void) {
 
 
 /* Perform dry run of all test cases to confirm that the app is working as
-   expected. This is done only for the initial inputs, and only once. */
-
+   expected. This is done only for the initial inputs, and only once. 
+   预运行，目的是检查系统的配置是否正确
+   */
 static void perform_dry_run(char** argv) {
 
   struct queue_entry* q = queue;
@@ -3130,7 +3128,6 @@ static void perform_dry_run(char** argv) {
 
 
 /* Helper function: link() if possible, copy otherwise. */
-
 static void link_or_copy(u8* old_path, u8* new_path) {
 
   s32 i = link(old_path, new_path);
@@ -3256,7 +3253,6 @@ static void pivot_inputs(void) {
 
 /* Construct a file name for a new test case, capturing the operation
    that led to its discovery. Uses a static buffer. */
-
 static u8* describe_op(u8 hnb) {
 
   static u8 ret[256];
@@ -3296,8 +3292,9 @@ static u8* describe_op(u8 hnb) {
 #endif /* !SIMPLE_FILES */
 
 
-/* Write a message accompanying the crash directory :-) */
-
+/* Write a message accompanying the crash directory :-) 
+  给crash加入说明文档
+*/
 static void write_crash_readme(void) {
 
   u8* fn = alloc_printf("%s/crashes/README.txt", out_dir);
@@ -3355,7 +3352,6 @@ static void write_crash_readme(void) {
    超时 崩溃 错误 保存对应的输入到hang或crash目录中
    
    */
-
 static u8 save_if_interesting(char** argv, void* mem, u32 len, u8 fault) {
 
   u8  *fn = "";
@@ -4146,9 +4142,8 @@ static void check_term_size(void);
 
 /* A spiffy retro stats screen! This is called every stats_update_freq
    execve() calls, plus in several other circumstances. 
-   UI
+   UI展示相关
    */
-
 static void show_stats(void) {
 
   static u64 last_stats_ms, last_plot_ms, last_ms, last_execs;
@@ -4730,7 +4725,6 @@ static void show_init_stats(void) {
    2^31). 
    找到大于或等于给定参数val的最小2的幂次方数
    */
-
 static u32 next_p2(u32 val) {
 
   u32 ret = 1;
@@ -4747,7 +4741,6 @@ static u32 next_p2(u32 val) {
    思路是尝试删除种子的部分数据，如果删除后的数据得到trace_bits的hash与之前的一致
    那么数据被删除也不会影响覆盖率，可以删除
    */
-
 static u8 trim_case(char** argv, struct queue_entry* q, u8* in_buf) {
 
   static u8 tmp[64];
@@ -4883,7 +4876,6 @@ fuzz_one()的重要功能组成
 4. 错误条件处理
 5. 超时返回1
 */
-
 EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
 
   u8 fault;
@@ -4981,9 +4973,8 @@ static u32 choose_block_len(u32 limit) {
 /* Calculate case desirability score to adjust the length of havoc fuzzing.
    A helper function for fuzz_one(). Maybe some of these constants should
    go into config.h. 
-   得分高的：运行时间短的、覆盖率高的、轮次多的、深度深的
+   得分高的=运行时间短的、覆盖率高的、轮次多的、深度深的
    */
-
 static u32 calculate_score(struct queue_entry* q) {
 
   u32 avg_exec_us = total_cal_us / total_cal_cycles;
@@ -5140,7 +5131,6 @@ static u32 calculate_score(struct queue_entry* q) {
    
    辅助函数：避免在确定性变异期间重复执行比特翻转操作
    */
-
 static u8 could_be_bitflip(u32 xor_val) {
 
   u32 sh = 0;
@@ -5173,7 +5163,6 @@ static u8 could_be_bitflip(u32 xor_val) {
    
    辅助函数：避免在确定性变异期间重复执行算术操作
    */
-
 static u8 could_be_arith(u32 old_val, u32 new_val, u8 blen) {
 
   u32 i, ov = 0, nv = 0, diffs = 0;
@@ -5253,8 +5242,10 @@ static u8 could_be_arith(u32 old_val, u32 new_val, u8 blen) {
    interesting integer is redundant given the insertions done for
    shorter blen. The last param (check_le) is set if the caller
    already executed LE insertion for current blen and wants to see
-   if BE variant passed in new_val is unique. */
-
+   if BE variant passed in new_val is unique. 
+   
+   辅助函数：避免在确定性变异期间重复interest value相关操作
+   */
 static u8 could_be_interest(u32 old_val, u32 new_val, u8 blen, u8 check_le) {
 
   u32 i, j;
@@ -5325,7 +5316,10 @@ static u8 could_be_interest(u32 old_val, u32 new_val, u8 blen, u8 check_le) {
 
 /* Take the current entry from the queue, fuzz it for a while. This
    function is a tad too long... returns 0 if fuzzed successfully, 1 if
-   skipped or bailed out. */
+   skipped or bailed out. 
+   
+   fuzz主流程
+   */
 
 static u8 fuzz_one(char** argv) {
 
@@ -7177,8 +7171,9 @@ abandon_entry:
 }
 
 
-/* Grab interesting test cases from other fuzzers. */
-
+/* Grab interesting test cases from other fuzzers. 
+   主从模式相关，从其他fuzzer同步有价值的case
+*/
 static void sync_fuzzers(char** argv) {
 
   DIR* sd;
@@ -7316,7 +7311,6 @@ static void sync_fuzzers(char** argv) {
 
 
 /* Handle stop signal (Ctrl-C, etc). 信号处理：杀死forkserver和子进程 */
-
 static void handle_stop_sig(int sig) {
 
   stop_soon = 1; 
@@ -7328,7 +7322,6 @@ static void handle_stop_sig(int sig) {
 
 
 /* Handle skip request (SIGUSR1). */
-
 static void handle_skipreq(int sig) {
 
   skip_requested = 1;
@@ -7336,7 +7329,6 @@ static void handle_skipreq(int sig) {
 }
 
 /* Handle timeout (SIGALRM). 超时处理*/
-
 static void handle_timeout(int sig) {
 
   if (child_pid > 0) {
@@ -7356,8 +7348,9 @@ static void handle_timeout(int sig) {
 
 /* Do a PATH search and find target binary to see that it exists and
    isn't a shell script - a common and painful mistake. We also check for
-   a valid ELF header and for evidence of AFL instrumentation. */
-
+   a valid ELF header and for evidence of AFL instrumentation. 
+   检查target的格式正确性
+   */
 EXP_ST void check_binary(u8* fname) {
 
   u8* env_path = 0;
@@ -7524,7 +7517,6 @@ EXP_ST void check_binary(u8* fname) {
 
 
 /* Trim and possibly create a banner for the run. banner展示相关*/
-
 static void fix_up_banner(u8* name) {
 
   if (!use_banner) {
@@ -7553,8 +7545,7 @@ static void fix_up_banner(u8* name) {
 }
 
 
-/* Check if we're on TTY. */
-
+/* Check if we're on TTY. 是否依赖于终端*/
 static void check_if_tty(void) {
 
   struct winsize ws;
@@ -7579,7 +7570,6 @@ static void check_if_tty(void) {
 
 
 /* Check terminal dimensions after resize. */
-
 static void check_term_size(void) {
 
   struct winsize ws;
@@ -7596,7 +7586,6 @@ static void check_term_size(void) {
 
 
 /* Display usage hints. 用法*/
-
 static void usage(u8* argv0) {
 
   SAYF("\n%s [ options ] -- /path/to/fuzzed_app [ ... ]\n\n"
@@ -7644,7 +7633,6 @@ static void usage(u8* argv0) {
 
 
 /* Prepare output directories and fds. 准备好一系列用到的文件描述符*/
-
 EXP_ST void setup_dirs_fds(void) {
 
   u8* tmp;
@@ -7767,7 +7755,6 @@ EXP_ST void setup_dirs_fds(void) {
 
 
 /* Setup the output file for fuzzed data, if not using -f. */
-
 EXP_ST void setup_stdio_file(void) {
 
   u8* fn = alloc_printf("%s/.cur_input", out_dir);
@@ -7786,7 +7773,6 @@ EXP_ST void setup_stdio_file(void) {
 /* Make sure that core dumps don't go to a program. 
 dump转储相关，关闭转储以提高性能
 */
-
 static void check_crash_handling(void) {
 
 #ifdef __APPLE__
@@ -7852,7 +7838,6 @@ static void check_crash_handling(void) {
 
 
 /* Check CPU governor. */
-
 static void check_cpu_governor(void) {
 
   FILE* f;
@@ -7908,7 +7893,6 @@ static void check_cpu_governor(void) {
 
 
 /* Count the number of logical CPU cores. */
-
 static void get_core_count(void) {
 
   u32 cur_runnable = 0;
@@ -7995,7 +7979,6 @@ static void get_core_count(void) {
 
 
 /* Validate and fix up out_dir and sync_dir when using -S. */
-
 static void fix_up_sync(void) {
 
   u8* x = sync_id;
@@ -8037,14 +8020,12 @@ static void fix_up_sync(void) {
 
 
 /* Handle screen resize (SIGWINCH). */
-
 static void handle_resize(int sig) {
   clear_screen = 1;
 }
 
 
 /* Check ASAN options. */
-
 static void check_asan_opts(void) {
   u8* x = getenv("ASAN_OPTIONS");
 
@@ -8075,7 +8056,6 @@ static void check_asan_opts(void) {
 
 
 /* Detect @@ in args. 替换到使用到@@的地方*/
-
 EXP_ST void detect_file_args(char** argv) {
 
   u32 i = 0;
@@ -8127,7 +8107,6 @@ EXP_ST void detect_file_args(char** argv) {
    siginterrupt(), and does other unnecessary things. 
    安装信号处理器
    */
-
 EXP_ST void setup_signal_handlers(void) {
 
   struct sigaction sa;
@@ -8170,7 +8149,6 @@ EXP_ST void setup_signal_handlers(void) {
 
 
 /* Rewrite argv for QEMU. */
-
 static char** get_qemu_argv(u8* own_loc, char** argv, int argc) {
 
   char** new_argv = ck_alloc(sizeof(char*) * (argc + 4));
@@ -8243,7 +8221,6 @@ static char** get_qemu_argv(u8* own_loc, char** argv, int argc) {
 
 
 /* Make a copy of the current command line. */
-
 static void save_cmdline(u32 argc, char** argv) {
 
   u32 len = 1, i;

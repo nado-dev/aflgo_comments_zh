@@ -1,5 +1,7 @@
 /*
    aflgo compiler
+
+   a drop-in replacement of clang
    --------------
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -129,7 +131,7 @@ static void edit_params(u32 argc, char** argv) {
     if (!strncmp(cur, "-distance", 9)
         || !strncmp(cur, "-targets", 8)
         || !strncmp(cur, "-outdir", 7))
-      cc_params[cc_par_cnt++] = "-mllvm";
+      cc_params[cc_par_cnt++] = "-mllvm"; // 传递给llvm处理
 
     if (!strcmp(cur, "-m32")) bit_mode = 32;
     if (!strcmp(cur, "-m64")) bit_mode = 64;
@@ -335,11 +337,11 @@ int main(int argc, char** argv) {
 
   }
 
-
+// 找到运行时库
   find_obj(argv[0]);
-
+// 收集环境变量中的参数收集到cc_params中，在传递给cc
   edit_params(argc, argv);
-
+// 库函数，找到文件cc_params[0]，并以第二个参数执行该文件
   execvp(cc_params[0], (char**)cc_params);
 
   FATAL("Oops, failed to execute '%s' - check your PATH", cc_params[0]);

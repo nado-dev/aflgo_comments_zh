@@ -79,11 +79,12 @@ __thread u32 __afl_prev_loc;
 static u8 is_persistent;
 
 
-/* SHM setup. */
-
+/* SHM setup. 
+    如果用户没有指定$SHM_ENV_VAR的共享内存地址，使用默认的__afl_area_ptr
+*/
 static void __afl_map_shm(void) {
 
-  u8 *id_str = getenv(SHM_ENV_VAR);
+  u8 *id_str = getenv(SHM_ENV_VAR); // 在afl-fuzz.c main 中被setup_shm调用被存到环境变量中
 
   /* If we're running under AFL, attach to the appropriate region, replacing the
      early-stage __afl_area_initial region that is needed to allow some really
@@ -110,6 +111,7 @@ static void __afl_map_shm(void) {
 
 
 /* Fork server logic. */
+// 这段是在子进程中执行的
 
 static void __afl_start_forkserver(void) {
 
@@ -121,7 +123,9 @@ static void __afl_start_forkserver(void) {
   /* Phone home and tell the parent that we're OK. If parent isn't there,
      assume we're not running in forkserver mode and just execute program. */
 
-  if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
+  // 这里可以和上面父进程等待子进程 4 字节的消息呼应起来，证明 forkserver 初始化成功。
+  
+  if (write(FORKSRV_FD + 1, tmp, 4) != 4) return; // 发送4Bytes的握手信息
 
   while (1) {
 
@@ -129,7 +133,7 @@ static void __afl_start_forkserver(void) {
     int status;
 
     /* Wait for parent by reading from the pipe. Abort if read fails. */
-
+    // 从FORKSRV_FD得到4bytes的信息后，说明 fuzzer 要进行新一轮的运行
     if (read(FORKSRV_FD, &was_killed, 4) != 4) _exit(1);
 
     /* If we stopped the child in persistent mode, but there was a race
@@ -144,7 +148,7 @@ static void __afl_start_forkserver(void) {
     if (!child_stopped) {
 
       /* Once woken up, create a clone of our process. */
-
+      // 启动一个子进程
       child_pid = fork();
       if (child_pid < 0) _exit(1);
 
@@ -154,7 +158,7 @@ static void __afl_start_forkserver(void) {
 
         close(FORKSRV_FD);
         close(FORKSRV_FD + 1);
-        return;
+        return; // ?去哪了：回到正常原逻辑中
   
       }
 
@@ -169,9 +173,10 @@ static void __afl_start_forkserver(void) {
     }
 
     /* In parent process: write PID to pipe, then wait for child. */
-
+    // 父进程把子进程的pid回给Fuzzer
     if (write(FORKSRV_FD + 1, &child_pid, 4) != 4) _exit(1);
 
+    // 调用waitpid等待子进程完成（子进程运行结束，表明该轮的模糊测试完成）
     if (waitpid(child_pid, &status, is_persistent ? WUNTRACED : 0) < 0)
       _exit(1);
 
@@ -182,7 +187,7 @@ static void __afl_start_forkserver(void) {
     if (WIFSTOPPED(status)) child_stopped = 1;
 
     /* Relay wait status to pipe, then loop back. */
-
+    // 将子进程返回的状态码 status 返回给 fuzzer ，以判断程序的运行结果（崩溃、超时等）
     if (write(FORKSRV_FD + 1, &status, 4) != 4) _exit(1);
 
   }
@@ -245,7 +250,7 @@ int __afl_persistent_loop(unsigned int max_cnt) {
 }
 
 
-/* This one can be called from user code when deferred forkserver mode
+/* This one can be called from *user code* when deferred forkserver mode
     is enabled. */
 
 void __afl_manual_init(void) {
@@ -454,28 +459,28 @@ int hashset_is_member(hashset_t set, void *item)
 
 inline __attribute__((always_inline))
 void writeBB(const char* bbname) {
-    strcat(edgeStr, bbname);
-    size_t cksum=(size_t)hash32(bbname, strlen(edgeStr), 0xa5b35705);
-    if(!hashset_is_member(edgeSet,(void*)cksum)) {
-        fprintf(filefd, "[BB]: %s\n", bbname);
-        hashset_add(edgeSet, (void*)cksum);
+    strcat(edgeStr, bbname); // 把bbname拼接到edgeStr后，形如STARTexample.c:80
+    size_t cksum=(size_t)hash32(bbname, strlen(edgeStr), 0xa5b35705); // 得到bbname的哈希值
+    if(!hashset_is_member(edgeSet,(void*)cksum)) {  // cksum不在set中
+        fprintf(filefd, "[BB]: %s\n", bbname); // 写入记录[BB]: bbname\n
+        hashset_add(edgeSet, (void*)cksum);// 加入上述哈希值进map中
     }
-    strcpy(edgeStr, bbname);
+    strcpy(edgeStr, bbname); // *edgeStr=*bbname
     fflush(filefd);
 }
 
 void llvm_profiling_call(const char* bbname)
 	__attribute__((visibility("default")));
 
-void llvm_profiling_call(const char* bbname) {
+void llvm_profiling_call(const char* bbname) { //在pass里面调用，调用时机是在基本块的终结位置
     if (filefd != NULL) {
         writeBB(bbname);
-    } else if (getenv("AFLGO_PROFILER_FILE")) {
+    } else if (getenv("AFLGO_PROFILER_FILE")) { // AFLGO_PROFILER_FILE文件可以记录一个trace，BB的顺序
         filefd = fopen(getenv("AFLGO_PROFILER_FILE"), "a+");
         if (filefd != NULL) {
             strcpy(edgeStr, "START");
             edgeSet = hashset_create();
-            fprintf(filefd, "--------------------------\n");
+            fprintf(filefd, "--------------------------\n"); // 文件开始的标志
             writeBB(bbname);
         }
     }

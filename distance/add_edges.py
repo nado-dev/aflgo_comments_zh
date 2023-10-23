@@ -23,7 +23,7 @@ class AddEdge:
 
     self.was_added = 0
     with open(args.extra_edges, "r") as f:
-      map(self.parse_edges, f.readlines())
+      map(self.parse_edges, f.readlines()) # 通过打开额外边文件，逐行读取并调用parse_edges方法来添加边
 
     print("\n############################################")
     print("#Connected components reduced from %d to %d." % (before, nx.number_connected_components(self.G)))

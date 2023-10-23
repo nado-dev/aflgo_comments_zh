@@ -3,6 +3,8 @@
 Construct CG and calculate distances, similarly to gen_distance_orig.sh.
 The distance is parallelized and uses the compiled distance calculation
 version by default, so that it's much faster.
+
+与gen_distance.orig.sh功能一直, 但是更快
 """
 import argparse
 import multiprocessing as mp
@@ -25,12 +27,12 @@ DIST_PY  = PROJ_ROOT / "distance/distance_calculator/distance.py"
 def next_step(args):
     global STEP
     STEP += 1
-    fn = args.temporary_directory / STATE_FN
+    fn = args.temporary_directory / STATE_FN # "state-fast"
     with fn.open("w") as f:
         print(STEP, file=f)
 
 
-def get_resume(args):
+def get_resume(args): 
     fn = args.temporary_directory / STATE_FN
     r = 0
     try:
@@ -47,7 +49,9 @@ def abort(args):
     print(f"Check {log_p} for more information", file=sys.stderr)
     sys.exit(1)
 
-
+'''
+删除重复行
+'''
 def remove_repeated_lines(in_path, out_path):
     lines_seen = set()
     with out_path.open("w") as out, in_path.open("r") as in_f:
@@ -81,13 +85,15 @@ def opt_callgraph(args, binary):
         except subprocess.CalledProcessError:
             abort(args)
 
-
+'''
+生成CG
+'''
 def construct_callgraph(args, binaries):
     fuzzer = args.fuzzer_name
     dot_files = args.temporary_directory / DOT_DIR_NAME
     callgraph_out = dot_files / CALLGRAPH_NAME
 
-    if fuzzer:
+    if fuzzer: # 明确给定的状况下
         tmp = next(args.binaries_directory.glob(f"{fuzzer.name}.0.0.*.bc"))
         binaries = [tmp]
 
@@ -96,7 +102,7 @@ def construct_callgraph(args, binaries):
         temp = dot_files / f"{binary.name}.callgraph.temp.dot"
         callgraph = dot_files / f"{binary.name}.callgraph.dot"
         callgraph.replace(temp)     # return only works with py >= 3.8 :(
-        remove_repeated_lines(temp, callgraph)
+        remove_repeated_lines(temp, callgraph) 
         temp.unlink()
 
     # The goal is to have one file called "callgraph.dot"
@@ -105,7 +111,7 @@ def construct_callgraph(args, binaries):
         cg.replace(callgraph_out)
     else:
         callgraphs = dot_files.glob("*.callgraph.dot")
-        merge_callgraphs(callgraphs, callgraph_out)
+        merge_callgraphs(callgraphs, callgraph_out) # 合并多个CG成一个
     next_step(args)
 
 
@@ -122,7 +128,7 @@ def exec_distance_prog(dot, targets, out, names, cg_distance=None,
             called functions.
         py_version: If true, the python version is used.
     """
-    prog = DIST_BIN if not py_version else DIST_PY
+    prog = DIST_BIN if not py_version else DIST_PY # Cversion or python version
     cmd = [prog,
            "-d", dot,
            "-t", targets,
@@ -168,11 +174,12 @@ def calculating_distances(args):
         print(f"({STEP}) Computing distance for callgraph")
         log_p = args.temporary_directory / f"step{STEP}.log"
         try:
-            r = exec_distance_prog(
-                    callgraph,
-                    ftargets,
-                    callgraph_distance,
-                    fnames,
+            # 生成cg_distance，
+            r = exec_distance_prog( 
+                    callgraph, # CF的dot文件，单独的一个文件
+                    ftargets, # 目标节点（函数级别），如果某个函数的其中某个BB命中了的某个指令与target的某个位置对应
+                    callgraph_distance, # 生成的距离文件
+                    fnames, # 节点的名字，待测软件的所有的Function的名字
                     py_version=args.python_only)
         except subprocess.CalledProcessError as err:
             with log_p.open("w") as f:
@@ -188,7 +195,7 @@ def calculating_distances(args):
     with callgraph.open("r") as f:
         callgraph_dot = f.read()
 
-    # Helper
+    # Helper 第二次调用distance.bin 计算CFG的距离
     def calculate_cfg_distance_from_file(cfg: Path):
         if cfg.stat().st_size == 0: return
         dd_cleanup(cfg)     # for python version
@@ -197,7 +204,7 @@ def calculating_distances(args):
         outname = name + ".distances.txt"
         outpath = cfg.parent / outname
         exec_distance_prog(
-                cfg,
+                cfg, # cfg
                 bbtargets,
                 outpath,
                 bbnames,
@@ -206,9 +213,9 @@ def calculating_distances(args):
                 py_version=args.python_only)
     print(f"({STEP}) Computing distance for control-flow graphs (this might "
           "take a while)")
-    with ThreadPoolExecutor(max_workers=mp.cpu_count()) as executor:
+    with ThreadPoolExecutor(max_workers=mp.cpu_count()) as executor:  # 多线程
         results = executor.map(calculate_cfg_distance_from_file,
-                               dot_files.glob("cfg.*.dot"))
+                               dot_files.glob("cfg.*.dot")) # 列表
 
     try:
         for r in results: pass  # forward Exceptions
@@ -274,13 +281,13 @@ def main():
     args = parser.parse_args()
 
     # Additional sanity checks
-    binaries = list(args.binaries_directory.glob("*.0.0.*.bc"))
+    binaries = list(args.binaries_directory.glob("*.0.0.*.bc")) # 找到binaries_directory文件夹下所有以.0.0.结尾并以.bc为扩展名的文件
     if len(binaries) == 0:
         parser.error("Couldn't find any binaries in folder "
                      f"{args.binaries_directory}.")
-    if args.fuzzer_name:
-        tmp = args.binaries_directory.glob(f"{args.fuzzer_name}.0.0.*.bc")
-        args.fuzzer_name = args.binaries_directory / args.fuzzer_name
+    if args.fuzzer_name: # 如果指定了特定的二进制名字
+        tmp = args.binaries_directory.glob(f"{args.fuzzer_name}.0.0.*.bc")# 在binaries_directory文件夹找待测试的二进制执行文件 f_name.0.0.*.bc
+        args.fuzzer_name = args.binaries_directory / args.fuzzer_name# fuzzer_name存的是待测试二进制执行文件的绝对路径
         if not args.fuzzer_name.exists() or args.fuzzer_name.is_dir():
             parser.error(f"Couldn't find {args.fuzzer_name}.")
         if len(list(tmp)) == 0:
